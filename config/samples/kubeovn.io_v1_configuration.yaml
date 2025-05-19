@@ -138,12 +138,12 @@ spec:
       memory: "4Gi"
   ovnDir: /etc/origin/ovn
   ovsOVN:
-    limits:
-      cpu: "0"
-      memory: "0"
     requests:
-      cpu: "0"
-      memory: "0"
+      cpu: "200"
+      memory: "200Mi"
+    limits:
+      cpu: "2"
+      memory: "2Gi"
   performance:
     gcInterval: 360
     inspectInterval: 20

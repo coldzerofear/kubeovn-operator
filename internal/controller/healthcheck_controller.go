@@ -41,8 +41,7 @@ func (r *HealthCheckReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // to force a re-run of the healthcheck
 func (r *HealthCheckReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	configObj := &kubeovniov1.Configuration{}
-	err := r.Get(ctx, req.NamespacedName, configObj)
-	if err != nil {
+	if err := r.Get(ctx, req.NamespacedName, configObj); err != nil {
 		if apierrors.IsNotFound(err) {
 			r.Log.WithValues("name", configObj.Name).Info("configuration not found")
 			return ctrl.Result{}, nil

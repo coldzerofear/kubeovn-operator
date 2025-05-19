@@ -111,8 +111,7 @@ func (r *ConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// check and add finalizer
-	if !controllerutil.ContainsFinalizer(config, kubeovniov1.KubeOVNConfigurationFinalizer) {
-		controllerutil.AddFinalizer(config, kubeovniov1.KubeOVNConfigurationFinalizer)
+	if controllerutil.AddFinalizer(config, kubeovniov1.KubeOVNConfigurationFinalizer) {
 		return ctrl.Result{}, r.Client.Patch(ctx, config, client.MergeFrom(configObj))
 	}
 
@@ -181,6 +180,9 @@ func (r *ConfigurationReconciler) applyObject(ctx context.Context, config *kubeo
 			}
 
 			if err = r.reconcileObject(ctx, obj); err != nil {
+				if apierrors.IsInvalid(err) {
+					r.EventRecorder.Event(config, corev1.EventTypeWarning, "ApplyFailed", err.Error())
+				}
 				return fmt.Errorf("error reconcilling object %s/%s: %v", obj.GetNamespace(), obj.GetName(), err)
 			}
 		}
@@ -200,15 +202,25 @@ func (r *ConfigurationReconciler) reconcileObject(ctx context.Context, obj clien
 	return r.Patch(ctx, unstructuredObj, client.Apply, client.ForceOwnership, client.FieldOwner("kubeovn-operator"))
 }
 
+// enqueueObject returns all configuration objects to prepare for join the queue
+func (r *ConfigurationReconciler) enqueueObject(ctx context.Context, _ client.Object) []ctrl.Request {
+	result := []ctrl.Request{}
+	configList := &kubeovniov1.ConfigurationList{}
+	if err := r.Client.List(ctx, configList); err == nil {
+		for _, c := range configList.Items {
+			result = append(result, reconcile.Request{NamespacedName: types.NamespacedName{Name: c.Name, Namespace: c.Namespace}})
+		}
+	}
+	return result
+}
+
 // filterObject returns the configuration object if object is owned by the configuratino controller
 func (r *ConfigurationReconciler) filterObject(ctx context.Context, obj client.Object) []ctrl.Request {
-	ownerRefs := obj.GetOwnerReferences()
 	result := []ctrl.Request{}
-	if len(ownerRefs) == 0 {
+	if len(obj.GetOwnerReferences()) == 0 {
 		return result
 	}
-
-	for _, v := range ownerRefs {
+	for _, v := range obj.GetOwnerReferences() {
 		if v.Kind == kubeovniov1.Kind && v.APIVersion == kubeovniov1.APIVersion {
 			result = append(result, ctrl.Request{NamespacedName: types.NamespacedName{Name: v.Name, Namespace: r.Namespace}})
 		}
@@ -243,6 +255,12 @@ func (r *ConfigurationReconciler) AddWatches(b *builder.Builder) *builder.Builde
 			return true
 		},
 	}
+	// Add wath nodes to coordinate changes.
+	b.Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(r.enqueueObject), builder.WithPredicates(predicate.Funcs{
+		UpdateFunc: func(e event.TypedUpdateEvent[client.Object]) bool {
+			return !reflect.DeepEqual(e.ObjectOld.GetLabels(), e.ObjectNew.GetLabels())
+		},
+	}))
 	for key := range templates.OrderedObjectList {
 		b.Watches(key, handler.EnqueueRequestsFromMapFunc(r.filterObject), builder.WithPredicates(updatePred))
 	}
@@ -258,8 +276,7 @@ func (r *ConfigurationReconciler) findMasterNodes(ctx context.Context, config *k
 	}
 	nodeList := &corev1.NodeList{}
 
-	err = r.List(ctx, nodeList, client.MatchingLabels(set))
-	if err != nil {
+	if err = r.List(ctx, nodeList, client.MatchingLabels(set)); err != nil {
 		return fmt.Errorf("error listing nodes :%v", err)
 	}
 
@@ -317,18 +334,15 @@ func (r *ConfigurationReconciler) initializeConditions(ctx context.Context, conf
 func (r *ConfigurationReconciler) reconcileClusterScopedReference(ctx context.Context, config *kubeovniov1.Configuration) error {
 	ns := &corev1.Namespace{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: kubeovniov1.KubeOVNFakeNamespace}, ns)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			newNS := &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: kubeovniov1.KubeOVNFakeNamespace,
-				},
-			}
-			return r.Client.Create(ctx, newNS)
+	if apierrors.IsNotFound(err) {
+		newNS := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: kubeovniov1.KubeOVNFakeNamespace,
+			},
 		}
-		return err
+		return r.Client.Create(ctx, newNS)
 	}
-	return nil
+	return err
 }
 
 // deleteClusterScopedReference is triggered during configuration deletion
@@ -343,17 +357,14 @@ func (r *ConfigurationReconciler) deleteClusterScopedReference(ctx context.Conte
 
 	err := r.Client.Get(ctx, types.NamespacedName{Name: kubeovniov1.KubeOVNFakeNamespace}, newNS)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return err
+		return client.IgnoreNotFound(err)
 	}
+
 	if err := r.Client.Delete(ctx, newNS); err != nil {
 		return err
 	}
 
-	if controllerutil.ContainsFinalizer(config, kubeovniov1.KubeOVNConfigurationFinalizer) {
-		controllerutil.RemoveFinalizer(config, kubeovniov1.KubeOVNConfigurationFinalizer)
+	if controllerutil.RemoveFinalizer(config, kubeovniov1.KubeOVNConfigurationFinalizer) {
 		return r.Client.Patch(ctx, config, client.MergeFrom(configObj))
 	}
 
@@ -367,8 +378,7 @@ func (r *ConfigurationReconciler) deleteClusterScopedReference(ctx context.Conte
 	for _, v := range nodeList.Items {
 		node := &v
 		nodeCopy := node.DeepCopy()
-		if controllerutil.ContainsFinalizer(node, kubeovniov1.KubeOVNNodeFinalizer) {
-			controllerutil.RemoveFinalizer(node, kubeovniov1.KubeOVNNodeFinalizer)
+		if controllerutil.RemoveFinalizer(node, kubeovniov1.KubeOVNNodeFinalizer) {
 			if err := r.Client.Patch(ctx, node, client.MergeFrom(nodeCopy)); err != nil {
 				return fmt.Errorf("error patching node %s: %v", node.GetName(), err)
 			}

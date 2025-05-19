@@ -30,7 +30,9 @@ func GenerateObjects(templates []string, config *ovnoperatorv1.Configuration, ob
 	var returnedObjects []client.Object
 
 	// patch version supplied by the controller
-	config.Spec.Global.Images.KubeOVNImage.Tag = version
+	if len(config.Spec.Global.Images.KubeOVNImage.Tag) == 0 {
+		config.Spec.Global.Images.KubeOVNImage.Tag = version
+	}
 
 	valsObj, err := generateMap(config)
 	if err != nil {
@@ -73,16 +75,16 @@ func generateObject(input string, valuesObj map[string]interface{}, object clien
 	f["lookup"] = engine.NewLookupFunction(restConfig)
 	f["include"] = include
 	tmpl := template.Must(template.New("objects").Funcs(f).Parse(input))
-	err := tmpl.Execute(&output, valuesObj)
-	if err != nil {
+
+	if err := tmpl.Execute(&output, valuesObj); err != nil {
 		return nil, fmt.Errorf("error rending template: %v", err)
 	}
 	// object is skipped due to condition in the template
 	if len(output.String()) == 0 {
 		return nil, nil
 	}
-	err = yaml.Unmarshal(output.Bytes(), newObj)
-	if err != nil {
+
+	if err := yaml.Unmarshal(output.Bytes(), newObj); err != nil {
 		return nil, err
 	}
 	return newObj, nil

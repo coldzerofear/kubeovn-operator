@@ -25,18 +25,18 @@ type RemoteCommandExecutor struct {
 // NewRemoteCommandExecutor is an implementation of Executor that runs commands in the driver pod
 // which allows us to ship custom drivers as container images
 func NewRemoteCommandExecutor(ctx context.Context, config *rest.Config, pod *corev1.Pod) (*RemoteCommandExecutor, error) {
-	cfgCopy := *config
+	cfgCopy := rest.CopyConfig(config)
 	cfgCopy.GroupVersion = &schema.GroupVersion{Group: "", Version: "v1"}
 	cfgCopy.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: scheme.Codecs}
 	cfgCopy.APIPath = "/api"
-	client, err := kubernetes.NewForConfig(&cfgCopy)
+	client, err := kubernetes.NewForConfig(cfgCopy)
 	if err != nil {
 		return nil, fmt.Errorf("error generating client for config in remote command executor: %v", err)
 	}
 
 	r := &RemoteCommandExecutor{
 		client: client,
-		cfg:    &cfgCopy,
+		cfg:    cfgCopy,
 		ctx:    ctx,
 		pod:    pod,
 	}

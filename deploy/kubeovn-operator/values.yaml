@@ -5,8 +5,8 @@
 replicaCount: 1
 
 image:
-  repository: gmehta3/kubeovn-operator
-  pullPolicy: Always
+  repository: harvester/kubeovn-operator
+  pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: latest
 
