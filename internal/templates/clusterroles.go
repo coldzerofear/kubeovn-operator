@@ -15,6 +15,8 @@ rules:
       - vpcs/status
       - vpc-nat-gateways
       - vpc-nat-gateways/status
+      - vpc-egress-gateways
+      - vpc-egress-gateways/status
       - subnets
       - subnets/status
       - ippools
@@ -101,6 +103,18 @@ rules:
     verbs:
       - get
   - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - deployments/scale
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - delete
+  - apiGroups:
       - ""
     resources:
       - services
@@ -124,11 +138,17 @@ rules:
       - list
       - watch
   - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - apps
     resources:
       - statefulsets
-      - deployments
-      - deployments/scale
     verbs:
       - get
       - list

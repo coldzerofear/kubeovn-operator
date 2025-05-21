@@ -206,7 +206,6 @@ spec:
                             default: true
                             type: boolean
                           tag:
-                            default: v1.14.0
                             type: string
                           thirdParty:
                             default: true
