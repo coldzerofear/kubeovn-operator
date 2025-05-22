@@ -356,11 +356,11 @@ func (r *ConfigurationReconciler) deleteClusterScopedReference(ctx context.Conte
 	}
 
 	err := r.Client.Get(ctx, types.NamespacedName{Name: kubeovniov1.KubeOVNFakeNamespace}, newNS)
-	if err != nil {
-		return client.IgnoreNotFound(err)
-	}
-
-	if err := r.Client.Delete(ctx, newNS); err != nil {
+	if apierrors.IsNotFound(err) {
+		r.Log.WithValues("name", config.Name).Info("namespace does not exist", "namespace", kubeovniov1.KubeOVNFakeNamespace)
+	} else if err != nil {
+		return err
+	} else if err = r.Client.Delete(ctx, newNS); err != nil {
 		return err
 	}
 
