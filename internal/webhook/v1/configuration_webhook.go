@@ -35,62 +35,62 @@ var (
 	configurationlog              = logf.Log.WithName("configuration-resource")
 	ovnCentralDefaultResourceSpec = kubeovnv1.ResourceSpec{
 		Requests: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewMilliQuantity(300, resource.BinarySI),
-			Memory: *resource.NewMilliQuantity(200, resource.BinarySI),
+			CPU:    resource.MustParse("300m"),
+			Memory: resource.MustParse("200Mi"),
 		},
 		Limits: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewQuantity(3, resource.BinarySI),
-			Memory: *resource.NewQuantity(4, resource.BinarySI),
+			CPU:    resource.MustParse("3"),
+			Memory: resource.MustParse("4Gi"),
 		},
 	}
 	ovsOVNDefaultResourceSpec = kubeovnv1.ResourceSpec{
 		Requests: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewMilliQuantity(200, resource.BinarySI),
-			Memory: *resource.NewMilliQuantity(200, resource.BinarySI),
+			CPU:    resource.MustParse("200m"),
+			Memory: resource.MustParse("200Mi"),
 		},
 		Limits: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewQuantity(2, resource.BinarySI),
-			Memory: *resource.NewQuantity(1, resource.BinarySI),
+			CPU:    resource.MustParse("2"),
+			Memory: resource.MustParse("1000Mi"),
 		},
 	}
 	kubeOVNControllerDefaultResourceSpec = kubeovnv1.ResourceSpec{
 		Requests: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewMilliQuantity(200, resource.BinarySI),
-			Memory: *resource.NewMilliQuantity(200, resource.BinarySI),
+			CPU:    resource.MustParse("200m"),
+			Memory: resource.MustParse("200Mi"),
 		},
 		Limits: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewQuantity(1, resource.BinarySI),
-			Memory: *resource.NewQuantity(1, resource.BinarySI),
+			CPU:    resource.MustParse("1000m"),
+			Memory: resource.MustParse("1Gi"),
 		},
 	}
 	kubeOVNCNIDefaultResourceSpec = kubeovnv1.ResourceSpec{
 		Requests: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewMilliQuantity(100, resource.BinarySI),
-			Memory: *resource.NewMilliQuantity(100, resource.BinarySI),
+			CPU:    resource.MustParse("100m"),
+			Memory: resource.MustParse("100Mi"),
 		},
 		Limits: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewQuantity(1, resource.BinarySI),
-			Memory: *resource.NewQuantity(1, resource.BinarySI),
+			CPU:    resource.MustParse("1000m"),
+			Memory: resource.MustParse("1Gi"),
 		},
 	}
 	kubeOVNPingerDefaultResourceSpec = kubeovnv1.ResourceSpec{
 		Requests: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewMilliQuantity(100, resource.BinarySI),
-			Memory: *resource.NewMilliQuantity(100, resource.BinarySI),
+			CPU:    resource.MustParse("100m"),
+			Memory: resource.MustParse("100Mi"),
 		},
 		Limits: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewMilliQuantity(200, resource.BinarySI),
-			Memory: *resource.NewMilliQuantity(400, resource.BinarySI),
+			CPU:    resource.MustParse("200m"),
+			Memory: resource.MustParse("400Mi"),
 		},
 	}
 	kubeOVNMonitorDefaultResourceSpec = kubeovnv1.ResourceSpec{
 		Requests: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewMilliQuantity(200, resource.BinarySI),
-			Memory: *resource.NewMilliQuantity(200, resource.BinarySI),
+			CPU:    resource.MustParse("200m"),
+			Memory: resource.MustParse("200Mi"),
 		},
 		Limits: kubeovnv1.CPUMemSpec{
-			CPU:    *resource.NewMilliQuantity(200, resource.BinarySI),
-			Memory: *resource.NewMilliQuantity(200, resource.BinarySI),
+			CPU:    resource.MustParse("200m"),
+			Memory: resource.MustParse("200Mi"),
 		},
 	}
 )

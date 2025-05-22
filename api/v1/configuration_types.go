@@ -102,8 +102,7 @@ type ImageDetails struct {
 type KubeOVNImageSpec struct {
 	// +kubebuilder:default:="kube-ovn"
 	Repository string `json:"repository,omitempty"`
-	// +kubebuilder:default:="v1.14.0"
-	Tag string `json:"tag,omitempty"` // defaults to version passed from build arg
+	Tag        string `json:"tag,omitempty"` // defaults to version passed from command line
 	// +kubebuilder:default:="kube-ovn-dpdk"
 	DpdkRepository string `json:"dpdkRepository,omitempty"`
 	// +kubebuilder:default:="vpc-nat-gateway"
