@@ -265,7 +265,7 @@ spec:
           - --default-gateway-check={{- .Values.components.checkGateway }}
           - --default-logical-gateway={{- .Values.components.logicalGateway }}
           - --default-u2o-interconnection={{- .Values.components.u2oInterconnection }}
-          - --default-exclude-ips={{- .Values.networking.excludeIPS }}
+          - --default-exclude-ips={{- .Values.networking.excludeIPS | default ""}}
           - --cluster-router={{ .Values.networking.defaultVPC }}
           - --node-switch={{ .Values.networking.nodeSubnet }}
           - --node-switch-cidr=
