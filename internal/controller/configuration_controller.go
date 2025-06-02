@@ -30,7 +30,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -46,6 +48,7 @@ import (
 	kubeovniov1 "github.com/harvester/kubeovn-operator/api/v1"
 	"github.com/harvester/kubeovn-operator/internal/render"
 	"github.com/harvester/kubeovn-operator/internal/templates"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 // ConfigurationReconciler reconciles a Configuration object
@@ -106,7 +109,7 @@ func (r *ConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	config := configObj.DeepCopy()
 	// if deletiontimestamp is set, then no further processing is needed as we let k8s gc the associated objects
-	if config.DeletionTimestamp != nil {
+	if !config.DeletionTimestamp.IsZero() {
 		return reconcile.Result{}, r.deleteClusterScopedReference(ctx, config)
 	}
 
@@ -348,6 +351,18 @@ func (r *ConfigurationReconciler) reconcileClusterScopedReference(ctx context.Co
 // deleteClusterScopedReference is triggered during configuration deletion
 // and triggers deletion of cluster scoped objects
 func (r *ConfigurationReconciler) deleteClusterScopedReference(ctx context.Context, config *kubeovniov1.Configuration) error {
+	// enusre CRD objects are deleted first, this ensures that they are GC'd by the controllers
+	// as some of them may have finalizers which may need some work to be done by the ovn controllers
+	crdObjs, err := render.GenerateObjects(templates.CRDList, config, &apiextensionsv1.CustomResourceDefinition{}, r.RestConfig, r.Version)
+	if err != nil {
+		return fmt.Errorf("error rendering CRDs during configuration cleanup: %v", err)
+	}
+
+	if err := r.ensureCRDObjectCleanup(ctx, crdObjs); err != nil {
+		return fmt.Errorf("error cleaning objects: %v", err)
+	}
+
+	// ensure crdObjs are cleaned up
 	configObj := config.DeepCopy()
 	newNS := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -355,17 +370,13 @@ func (r *ConfigurationReconciler) deleteClusterScopedReference(ctx context.Conte
 		},
 	}
 
-	err := r.Client.Get(ctx, types.NamespacedName{Name: kubeovniov1.KubeOVNFakeNamespace}, newNS)
+	err = r.Client.Get(ctx, types.NamespacedName{Name: kubeovniov1.KubeOVNFakeNamespace}, newNS)
 	if apierrors.IsNotFound(err) {
 		r.Log.WithValues("name", config.Name).Info("namespace does not exist", "namespace", kubeovniov1.KubeOVNFakeNamespace)
 	} else if err != nil {
 		return err
 	} else if err = r.Client.Delete(ctx, newNS); err != nil {
 		return err
-	}
-
-	if controllerutil.RemoveFinalizer(config, kubeovniov1.KubeOVNConfigurationFinalizer) {
-		return r.Client.Patch(ctx, config, client.MergeFrom(configObj))
 	}
 
 	// remove node finalizers to ensure nodes can be managed later on
@@ -384,6 +395,12 @@ func (r *ConfigurationReconciler) deleteClusterScopedReference(ctx context.Conte
 			}
 		}
 	}
+
+	// ensure that all resources and node finalizer are cleaned up
+	if controllerutil.RemoveFinalizer(config, kubeovniov1.KubeOVNConfigurationFinalizer) {
+		return r.Client.Patch(ctx, config, client.MergeFrom(configObj))
+	}
+
 	return nil
 }
 
@@ -400,4 +417,55 @@ func addressArrayEqual(existing []string, discovered []string) bool {
 	slices.Sort(existing)
 	slices.Sort(discovered)
 	return slices.Equal(existing, discovered)
+}
+
+func (r *ConfigurationReconciler) ensureCRDObjectCleanup(ctx context.Context, objs []client.Object) error {
+	dynClient, err := dynamic.NewForConfig(r.RestConfig)
+	if err != nil {
+		return fmt.Errorf("error generating dynamic client: %v", err)
+	}
+
+	var objectCount int
+	for _, obj := range objs {
+		crd, ok := obj.(*apiextensionsv1.CustomResourceDefinition)
+		if !ok {
+			r.Log.WithValues("name", obj.GetName()).Error(fmt.Errorf("unable to assert obj to custom resource definition"), obj.GetName())
+			continue
+		}
+
+		// dynamic client needs plural versions and we will check all possible versions for the crd
+		for _, version := range crd.Spec.Versions {
+			gvr := schema.GroupVersionResource{Group: crd.Spec.Group, Version: version.Name, Resource: crd.Spec.Names.Plural}
+			r.Log.WithValues("GroupVersionResource", gvr).Info("looking up objects for gvr")
+			var resourceInterface dynamic.ResourceInterface
+			if crd.Spec.Scope == apiextensionsv1.NamespaceScoped {
+				resourceInterface = dynClient.Resource(gvr).Namespace("")
+			} else {
+				resourceInterface = dynClient.Resource(gvr)
+			}
+			dynObjects, err := resourceInterface.List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return fmt.Errorf("error checking getting list of objects for type %s: %v", obj.GetName(), err)
+			}
+
+			objectCount = objectCount + len(dynObjects.Items)
+			r.Log.WithValues("objectType", obj.GetName()).Info("deleting objects as pre-requisite for configuration cleanup")
+			for _, v := range dynObjects.Items {
+				if !v.GetDeletionTimestamp().IsZero() {
+					continue
+				}
+				if err := resourceInterface.Delete(ctx, v.GetName(), metav1.DeleteOptions{}); err != nil {
+					return fmt.Errorf("error deleting resource %s: %v", v.GetName(), err)
+				}
+			}
+		}
+
+	}
+
+	// we requeue if object count is not 0, this will ensure we delete objects and requeue forcing objects to be checked again
+	// this gives controllers time to cleanup objects before CRD definitions are deleted
+	if objectCount > 0 {
+		return fmt.Errorf("%d objects still exist in the cluster, waiting for them to be GC'd by the controller", objectCount)
+	}
+	return nil
 }
